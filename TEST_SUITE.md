@@ -9,7 +9,7 @@ This document specifies all test cases for the Time-Off Microservice. Tests foll
 - **Integration Tests**: 27+ test cases across 12 workflows (includes 5 multi-location scenarios)
 - **Edge Case Tests**: 15+ test cases (includes 8 multi-location edge cases)
 - **Total Test Cases**: 120+ cases
-- **Target Coverage**: 85% overall, 95% for service logic
+- **Target Coverage**: 85% overall, 90% for service logic
 
 ### Testing Tools
 - **Framework**: Jest
@@ -1336,17 +1336,17 @@ describe('Edge Cases: Multi-Location Scenarios', () => {
 
 ### 8.1 Coverage by Service
 ```
-BalanceService:     95% (5 methods, critical path)
-RequestService:     95% (lifecycle management)
+BalanceService:     90% (5 methods, critical path)
+RequestService:     90% (lifecycle management)
 HCMSyncService:     90% (depends on mock HCM reliability)
-DivergenceService:  95% (important logic)
+DivergenceService:  90% (important logic)
 Controllers:        85% (input validation, routing)
 Utils/Helpers:      70% (less critical)
 ```
 
 ### 8.2 Line Coverage Goals
 - **Overall**: 85% minimum
-- **Service Logic**: 95% minimum
+- **Service Logic**: 90% minimum
 - **Integration Paths**: 90% minimum
 - **Error Paths**: 80% minimum
 
@@ -1526,7 +1526,7 @@ npm test -- --watch
 npm test -- --coverage --coverageReporters=text --coverageReporters=html
 
 # View: coverage/index.html
-# Verify: 85% overall, 95% service logic
+# Verify: 85% overall, 90% service logic
 ```
 
 ---

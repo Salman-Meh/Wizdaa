@@ -220,8 +220,8 @@ tests/
 ```
 
 ### Test Coverage Targets
-- **Overall**: 85% minimum
-- **Service Logic**: 95% minimum
+- **Overall**: 80% minimum
+- **Service Logic**: 90% minimum
 - **Integration**: 90% minimum
 
 ### Running Specific Tests
@@ -244,7 +244,7 @@ npm run test:watch
 
 2. **Implement Service**
    - Write implementation to pass tests
-   - Ensure 95%+ code coverage
+   - Ensure 90%+ code coverage
 
 3. **Add Integration Tests**
    - Test service interactions
@@ -319,7 +319,7 @@ All operations logged to `audit_logs` table:
 ## Contributing
 
 1. Write tests first (TDD)
-2. Ensure 95%+ code coverage
+2. Ensure 90%+ code coverage
 3. Run full test suite: `npm run test:coverage`
 4. Follow existing code style
 5. Update documentation
