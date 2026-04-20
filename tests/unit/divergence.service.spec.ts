@@ -177,6 +177,31 @@ describe('DivergenceService', () => {
       expect(details.isValid).toBe(true);
     });
 
+    test('should work when crypto.randomUUID is not available', () => {
+      const crypto = require('crypto');
+      const origRandomUUID = crypto.randomUUID;
+      crypto.randomUUID = undefined;
+
+      const divergence: Divergence = {
+        detected: true,
+        type: 'decrease',
+        previousBalance: 10,
+        currentBalance: 5,
+        isValid: true,
+      };
+
+      service.logDivergence('REQ-FALLBACK', divergence);
+
+      const row = db.prepare(
+        `SELECT * FROM audit_logs WHERE entity_id = ?`
+      ).get('REQ-FALLBACK') as any;
+
+      expect(row).toBeDefined();
+      expect(row.id).toBeTruthy();
+
+      crypto.randomUUID = origRandomUUID;
+    });
+
     test('should use default actor when not specified', () => {
       const divergence: Divergence = {
         detected: true,
@@ -201,6 +226,20 @@ describe('DivergenceService', () => {
   describe('getDivergenceStats', () => {
     test('should return zeros when no divergences exist', () => {
       const stats = service.getDivergenceStats(24);
+      expect(stats.total).toBe(0);
+      expect(stats.increases).toBe(0);
+      expect(stats.decreases).toBe(0);
+    });
+
+    test('should use default hoursBack when not provided', () => {
+      const stats = service.getDivergenceStats();
+      expect(stats.total).toBe(0);
+    });
+
+    test('should return zeros when query returns null row', () => {
+      // Drop and recreate audit_logs without data to ensure empty result
+      db.exec('DELETE FROM audit_logs');
+      const stats = service.getDivergenceStats(0); // 0 hours = all future
       expect(stats.total).toBe(0);
       expect(stats.increases).toBe(0);
       expect(stats.decreases).toBe(0);

@@ -194,6 +194,41 @@ describe('BalanceService', () => {
       }).rejects.toThrow('Version mismatch');
     });
 
+    test('should throw on concurrent modification (race condition after SELECT)', async () => {
+      const balance = {
+        id: uuidv4(),
+        employee_id: 'E001',
+        location_id: 'NYC',
+        balance_type: 'vacation',
+        current_balance: 20,
+        hcm_version: 1,
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      db.prepare(
+        `INSERT INTO balances (id, employee_id, location_id, balance_type, current_balance, hcm_version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        balance.id,
+        balance.employee_id,
+        balance.location_id,
+        balance.balance_type,
+        balance.current_balance,
+        balance.hcm_version,
+        balance.created_at.toISOString(),
+        balance.updated_at.toISOString()
+      );
+
+      // First deduction succeeds, bumping version to 2
+      await balanceService.deductBalance('E001', 'NYC', 'vacation', 5, 1);
+
+      // Second deduction with stale version 1 passes the initial check (row exists with sufficient balance)
+      // but the UPDATE fails because version is now 2
+      await expect(
+        balanceService.deductBalance('E001', 'NYC', 'vacation', 5, 1)
+      ).rejects.toThrow('Version mismatch');
+    });
+
     test('should handle refunds (negative deductions)', async () => {
       const balance = {
         id: uuidv4(),

@@ -188,6 +188,75 @@ describe('BalanceService — cache and edge-case coverage', () => {
     });
   });
 
+  // --- Line 56: getBalance with last_synced_at set in DB ---
+
+  describe('getBalance — last_synced_at populated', () => {
+    test('should return lastSyncedAt as Date when DB has last_synced_at', async () => {
+      const now = new Date().toISOString();
+      const id = uuidv4();
+      db.prepare(
+        `INSERT INTO balances (id, employee_id, location_id, balance_type, current_balance, hcm_version, last_synced_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(id, 'E_SYNC', 'NYC', 'vacation', 10, 1, now, now, now);
+
+      const service = new BalanceService(db);
+      const result = await service.getBalance('E_SYNC', 'NYC', 'vacation');
+
+      expect(result.lastSyncedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  // --- Line 136: deductBalance concurrent modification (changes === 0) ---
+
+  describe('deductBalance — concurrent modification after SELECT', () => {
+    test('should throw when UPDATE affects 0 rows due to race condition', async () => {
+      seedBalance(db, { employeeId: 'E_RACE', currentBalance: 20, hcmVersion: 1 });
+      const service = new BalanceService(db);
+
+      // Mock the UPDATE statement to return changes=0, simulating a race condition
+      const origPrepare = db.prepare.bind(db);
+      let updateCallCount = 0;
+      jest.spyOn(db, 'prepare').mockImplementation((sql: string) => {
+        const stmt = origPrepare(sql);
+        if (sql.includes('UPDATE balances') && sql.includes('SET current_balance')) {
+          updateCallCount++;
+          const origRun = stmt.run.bind(stmt);
+          stmt.run = (...args: any[]) => {
+            // Let the real update happen but report 0 changes
+            origRun(...args);
+            return { changes: 0, lastInsertRowid: 0 } as any;
+          };
+        }
+        return stmt;
+      });
+
+      await expect(
+        service.deductBalance('E_RACE', 'NYC', 'vacation', 5, 1)
+      ).rejects.toThrow('Version mismatch: concurrent modification detected');
+
+      jest.restoreAllMocks();
+    });
+  });
+
+  // --- Line 324: getAllBalancesForEmployee with last_synced_at from DB ---
+
+  describe('getAllBalancesForEmployee — last_synced_at from DB', () => {
+    test('should return lastSyncedAt as Date when DB row has it', async () => {
+      const now = new Date().toISOString();
+      const id = uuidv4();
+      db.prepare(
+        `INSERT INTO balances (id, employee_id, location_id, balance_type, current_balance, hcm_version, last_synced_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(id, 'E_ALLSYNC', 'NYC', 'vacation', 10, 1, now, now, now);
+
+      const service = new BalanceService(db);
+      const result = await service.getAllBalancesForEmployee('E_ALLSYNC');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].lastSyncedAt).toBeInstanceOf(Date);
+    });
+  });
+
   // --- Line 109: deductBalance balance not found ---
 
   describe('deductBalance — balance not found', () => {
@@ -477,6 +546,66 @@ describe('RequestService — branch coverage', () => {
       expect(processing[0].updatedAt).toBeInstanceOf(Date);
     });
 
+    test('should return mapped request objects for processing requests with all date fields populated', async () => {
+      // Create a request and transition to processing, then set all date fields
+      seedBalance(db, { employeeId: 'E060', locationId: 'NYC', currentBalance: 20 });
+      const req = await requestService.submitRequest({
+        employeeId: 'E060',
+        locationId: 'NYC',
+        balanceType: 'vacation',
+        daysRequested: 2,
+      });
+
+      const now = new Date().toISOString();
+      // Manually set to processing with all nullable date/text fields populated
+      db.prepare(
+        `UPDATE requests SET
+          status = 'processing',
+          manager_id = 'M001',
+          manager_location_id = 'NYC',
+          manager_action_at = ?,
+          hcm_submission_id = 'HCM-123',
+          submitted_to_hcm_at = ?,
+          hcm_approved_at = ?,
+          divergence_detected_at = ?,
+          divergence_reason = 'test divergence'
+         WHERE id = ?`
+      ).run(now, now, now, now, req.id);
+
+      const processing = await requestService.getRequestsInProcessing();
+
+      expect(processing).toHaveLength(1);
+      expect(processing[0].managerActionAt).toBeInstanceOf(Date);
+      expect(processing[0].submittedToHcmAt).toBeInstanceOf(Date);
+      expect(processing[0].hcmApprovedAt).toBeInstanceOf(Date);
+      expect(processing[0].divergenceDetectedAt).toBeInstanceOf(Date);
+      expect(processing[0].divergenceReason).toBe('test divergence');
+    });
+
+    test('should return processing request without optional date fields', async () => {
+      seedBalance(db, { employeeId: 'E061', locationId: 'NYC', currentBalance: 20 });
+      const req = await requestService.submitRequest({
+        employeeId: 'E061',
+        locationId: 'NYC',
+        balanceType: 'vacation',
+        daysRequested: 2,
+      });
+
+      // Set to processing but without manager_action_at
+      db.prepare(
+        `UPDATE requests SET status = 'processing' WHERE id = ?`
+      ).run(req.id);
+
+      const processing = await requestService.getRequestsInProcessing();
+
+      const found = processing.find(r => r.id === req.id);
+      expect(found).toBeDefined();
+      expect(found!.managerActionAt).toBeUndefined();
+      expect(found!.submittedToHcmAt).toBeUndefined();
+      expect(found!.hcmApprovedAt).toBeUndefined();
+      expect(found!.divergenceDetectedAt).toBeUndefined();
+    });
+
     test('should not return requests in other statuses', async () => {
       seedBalance(db, { employeeId: 'E051', locationId: 'NYC', currentBalance: 20 });
       await requestService.submitRequest({
@@ -507,6 +636,56 @@ describe('RequestService — branch coverage', () => {
       await expect(
         requestService.approveRequest(reqId, 'M001', 'NYC')
       ).rejects.toThrow('Cannot approve request in status');
+    });
+  });
+
+  // --- markHCMRejected without reason ---
+
+  describe('markHCMRejected — default reason', () => {
+    test('should use default reason when none provided', async () => {
+      const reqId = await createRequestInStatus('processing');
+      const result = await requestService.markHCMRejected(reqId);
+      expect(result.status).toBe('rejected');
+      expect(result.managerReason).toBe('Rejected by HCM');
+    });
+  });
+
+  // --- pauseForDivergenceConfirmation with negative currentBalance ---
+
+  describe('approveRequest — divergence with negative balance', () => {
+    test('should pause with cancellation message when balance is negative', async () => {
+      seedBalance(db, { employeeId: 'E070', locationId: 'NYC', currentBalance: 20 });
+      const req = await requestService.submitRequest({
+        employeeId: 'E070',
+        locationId: 'NYC',
+        balanceType: 'vacation',
+        daysRequested: 3,
+      });
+
+      // Simulate balance going negative (e.g. correction) — set to -1
+      // This means decrease, isValid=false (since -1 < 3), so it auto-rejects.
+      // For the pauseForDivergenceConfirmation branch we need isValid=true but negative balance.
+      // Actually, we need decrease + isValid=true to reach pauseForDivergenceConfirmation.
+      // isValid = currentBalance >= daysRequested. With negative balance, isValid is false → auto-reject.
+      // So we can't reach line 413 with negative balance through normal flow.
+      // Let's test with a direct DB manipulation to get a balance of -1 but daysRequested of -5
+      // Actually, let's just trigger the line via a request where balance decreased to exactly 0
+      // and daysRequested is 0 (edge case).
+
+      // Instead: mock detectDivergence to return negative currentBalance but isValid=true
+      jest.spyOn(balanceService, 'detectDivergence').mockResolvedValue({
+        detected: true,
+        type: 'decrease',
+        previousBalance: 20,
+        currentBalance: -1,
+        isValid: true,
+      });
+
+      const result = await requestService.approveRequest(req.id, 'M001', 'NYC');
+      expect(result.status).toBe('pending_employee_confirmation');
+      expect(result.divergenceReason).toContain('cancellation');
+
+      jest.restoreAllMocks();
     });
   });
 });
