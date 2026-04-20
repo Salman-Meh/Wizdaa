@@ -2,6 +2,15 @@
 
 A robust backend microservice for managing time-off request lifecycles while maintaining balance integrity between ExampleHR (frontend) and HCM (Human Capital Management system).
 
+## Repository
+
+https://github.com/Salman-Meh/Wizdaa
+
+```bash
+git clone https://github.com/Salman-Meh/Wizdaa.git
+cd Wizdaa
+```
+
 ## Quick Start
 
 ### Prerequisites
