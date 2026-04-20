@@ -65,6 +65,33 @@ describe('RedisCacheService', () => {
     });
   });
 
+  // ===== Constructor TTL from env var =====
+
+  describe('constructor with REDIS_CACHE_TTL_SECONDS env var', () => {
+    const originalEnv = process.env.REDIS_CACHE_TTL_SECONDS;
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        process.env.REDIS_CACHE_TTL_SECONDS = originalEnv;
+      } else {
+        delete process.env.REDIS_CACHE_TTL_SECONDS;
+      }
+    });
+
+    test('should use env var for default TTL when set', () => {
+      process.env.REDIS_CACHE_TTL_SECONDS = '120';
+      const cache = new RedisCacheService(undefined);
+      // Access private field to verify
+      expect((cache as any).defaultTtl).toBe(120);
+    });
+
+    test('should fall back to 3600 when env var is not set', () => {
+      delete process.env.REDIS_CACHE_TTL_SECONDS;
+      const cache = new RedisCacheService(undefined);
+      expect((cache as any).defaultTtl).toBe(3600);
+    });
+  });
+
   // ===== Error handling (mocked client) =====
 
   describe('error handling with mocked client', () => {
