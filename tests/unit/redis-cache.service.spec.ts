@@ -65,6 +65,33 @@ describe('RedisCacheService', () => {
     });
   });
 
+  // ===== Error handling (mocked client) =====
+
+  describe('error handling with mocked client', () => {
+    test('get should return null when JSON.parse fails', async () => {
+      const cache = new RedisCacheService(undefined, 60);
+      // Manually set internal state to simulate a connected client that returns bad data
+      (cache as any).connected = true;
+      (cache as any).client = {
+        get: async () => 'not-valid-json{{{',
+      };
+
+      const result = await cache.get('some-key');
+      expect(result).toBeNull();
+    });
+
+    test('healthCheck should return false when ping throws', async () => {
+      const cache = new RedisCacheService(undefined, 60);
+      (cache as any).connected = true;
+      (cache as any).client = {
+        ping: async () => { throw new Error('connection lost'); },
+      };
+
+      const result = await cache.healthCheck();
+      expect(result).toBe(false);
+    });
+  });
+
   // ===== Connected mode (real Redis) =====
   // These tests only run if Redis is available at localhost:6379
 

@@ -277,7 +277,44 @@ describe('RequestService', () => {
     });
   });
 
+  describe('approveRequest - error paths', () => {
+    test('should throw if request does not exist', async () => {
+      await expect(
+        requestService.approveRequest('non-existent-id', 'M001', 'NYC')
+      ).rejects.toThrow('not found');
+    });
+  });
+
   describe('confirmRequest', () => {
+    test('should throw if request does not exist', async () => {
+      await expect(
+        requestService.confirmRequest('non-existent-id', 'E001', 'proceed')
+      ).rejects.toThrow('not found');
+    });
+
+    test('should throw for invalid action', async () => {
+      const balId = require('uuid').v4();
+      db.prepare(
+        `INSERT INTO balances (id, employee_id, location_id, balance_type, current_balance, hcm_version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(balId, 'E001', 'NYC', 'vacation', 10, 1, new Date().toISOString(), new Date().toISOString());
+
+      const request = await requestService.submitRequest({
+        employeeId: 'E001',
+        locationId: 'NYC',
+        balanceType: 'vacation',
+        daysRequested: 5
+      });
+
+      db.prepare(
+        `UPDATE requests SET status = 'pending_employee_confirmation', divergence_reason = 'test' WHERE id = ?`
+      ).run(request.id);
+
+      await expect(
+        requestService.confirmRequest(request.id, 'E001', 'invalid' as any)
+      ).rejects.toThrow('Invalid action');
+    });
+
     test('should accept proceed action and submit to HCM', async () => {
       // Setup: Create balance and request in pending_employee_confirmation
       const balId = require('uuid').v4();
