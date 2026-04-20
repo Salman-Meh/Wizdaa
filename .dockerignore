@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.claude
+*.md
+tests
+jest.config.js
+jest.integration.config.js
+tsconfig.json
+.env
+.env.*
+data
+coverage

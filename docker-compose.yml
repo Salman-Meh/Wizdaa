@@ -1,0 +1,47 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/app/data/timeoff.db
+      - HCM_API_URL=http://mock-hcm:3001
+      - HCM_API_TIMEOUT_MS=5000
+      - HCM_RETRY_ATTEMPTS=3
+      - POLLING_INTERVAL_MS=5000
+      - STUCK_REQUEST_TIMEOUT_MS=3600000
+      - BATCH_SYNC_INTERVAL_MS=3600000
+      - RECOVERY_INTERVAL_MS=21600000
+      - REDIS_URL=redis://redis:6379
+      - REDIS_CACHE_TTL_SECONDS=3600
+    volumes:
+      - app-data:/app/data
+    depends_on:
+      redis:
+        condition: service_started
+      mock-hcm:
+        condition: service_started
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  mock-hcm:
+    build: .
+    command: ["node", "dist/tests/fixtures/mock-hcm.js"]
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  redis-data:
